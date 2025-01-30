@@ -56,7 +56,7 @@ self: {
           service)
         v
       else v)
-    settings);
+    (removeAttrs settings ["systemdDependencies"]));
   in
     nameValuePair "compose-${name}" {
       path = [dockerCfg.package];
