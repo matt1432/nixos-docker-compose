@@ -13,6 +13,8 @@ self: {
 
   cfg = config.virtualisation.docker-compose;
 
+  settingsFormat = pkgs.formats.yaml {};
+
   getImageNameFromDerivation = drv: let
     attrNamesOf = attrNames drv;
   in
@@ -58,6 +60,23 @@ self: {
         optionalString (imageDerivations != []) (concatMapStringsSep "\n"
           (image: "docker load -i ${toString image}")
           imageDerivations);
+
+      script = let
+        # FIXME: there has to be an easier way
+        composeFile = settingsFormat.generate "compose.yaml" (mapAttrs (n: v:
+          if n == "services"
+          then
+            mapAttrs (_: service:
+              mapAttrs (name: value:
+                if name == "image"
+                then getImageName value
+                else value))
+            v
+          else v)
+        settings);
+      in ''
+        docker compose -f ${composeFile} -p ${name} up
+      '';
 
       serviceConfig = {
         Restart = mkOverride 500 "always";
