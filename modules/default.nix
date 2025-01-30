@@ -3,9 +3,31 @@ self: {
   lib,
   ...
 }: let
-  inherit (lib) mkIf mkEnableOption mkOption types;
+  inherit (lib) attrNames concatStringsSep elem mkIf mkEnableOption mkOption isString types;
 
   cfg = config.virtualisation.docker-compose;
+
+  getImageNameFromDerivation = drv: let
+    attrNamesOf = attrNames drv;
+  in
+    if elem "destNameTag" attrNamesOf
+    then
+      # image coming from dockerTools.pullImage
+      drv.destNameTag
+    else
+      # image coming from dockerTools.buildImage
+      if elem "imageName" attrNamesOf && elem "imageTag" attrNamesOf
+      then "${drv.imageName}:${drv.imageTag}"
+      else
+        throw
+        "Image '${drv}' is missing the attribute 'destNameTag'. Available attributes: ${
+          concatStringsSep "," attrNamesOf
+        }";
+
+  getImageName = image:
+    if isString image
+    then image
+    else getImageNameFromDerivation image;
 in {
   options.virtualisation.docker-compose = {
     enable = mkEnableOption ''
@@ -17,7 +39,19 @@ in {
         freeformType = types.yaml.type;
 
         options = {
-          enabled = mkEnableOption "Enables the systemd unit for ${name}.";
+          enable = mkEnableOption "Enables the systemd unit for ${name}.";
+
+          services = mkOption {
+            type = types.attrsOf (types.submodule ({...}: {
+              freeformType = types.yaml.type;
+
+              options = {
+                image = mkOption {
+                  type = with types; either str package;
+                };
+              };
+            }));
+          };
         };
       }));
     };
