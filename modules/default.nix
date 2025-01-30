@@ -141,6 +141,15 @@ in {
   };
 
   config = mkIf (cfg.enable) {
+    assertions = [
+      {
+        assertion = dockerCfg.enable;
+        message = ''
+          Docker needs to be enabled to use docker-compose.
+        '';
+      }
+    ];
+
     systemd.services = mapAttrs' mkSystemdUnit enabledCompositions;
   };
 
