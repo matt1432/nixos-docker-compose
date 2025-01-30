@@ -12,6 +12,7 @@ self: {
   inherit (lib.strings) concatMapStringsSep concatStringsSep isString optionalString;
 
   cfg = config.virtualisation.docker-compose;
+  dockerCfg = config.virtualisation.docker;
 
   settingsFormat = pkgs.formats.yaml {};
 
@@ -58,12 +59,7 @@ self: {
     settings);
   in
     nameValuePair "compose-${name}" {
-      path = attrValues {
-        inherit
-          (pkgs)
-          docker
-          ;
-      };
+      path = [dockerCfg.package];
 
       preStart = let
         imageDerivations =
