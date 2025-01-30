@@ -3,17 +3,23 @@ self: {
   lib,
   ...
 }: let
-  inherit (lib) mkIf mkOption types;
+  inherit (lib) mkIf mkEnableOption mkOption types;
 
   cfg = config.virtualisation.docker-compose;
 in {
   options.virtualisation.docker-compose = {
-    enable = mkOption {
-      type = types.bool;
-      default = false;
-      description = ''
-        This option enables docker-compose declaration in nix code.
-      '';
+    enable = mkEnableOption ''
+      This option enables docker-compose declaration in nix code.
+    '';
+
+    compositions = mkOption {
+      type = types.attrsOf (types.submodule ({name, ...}: {
+        freeformType = types.yaml.type;
+
+        options = {
+          enabled = mkEnableOption "Enables the systemd unit for ${name}.";
+        };
+      }));
     };
   };
 
