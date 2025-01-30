@@ -1,9 +1,15 @@
 self: {
   config,
   lib,
+  pkgs,
   ...
 }: let
-  inherit (lib) attrNames concatStringsSep elem mkIf mkEnableOption mkOption isString types;
+  inherit (lib) types;
+  inherit (lib.attrsets) attrNames attrValues filterAttrs mapAttrs mapAttrs' nameValuePair removeAttrs;
+  inherit (lib.lists) elem filter;
+  inherit (lib.modules) mkIf mkOverride;
+  inherit (lib.options) mkOption mkEnableOption;
+  inherit (lib.strings) concatMapStringsSep concatStringsSep isString optionalString;
 
   cfg = config.virtualisation.docker-compose;
 
@@ -28,6 +34,42 @@ self: {
     if isString image
     then image
     else getImageNameFromDerivation image;
+
+  enabledCompositions =
+    mapAttrs
+    (_: v: removeAttrs v ["enable"])
+    (filterAttrs (_: v: v.enable) cfg.compositions);
+
+  mkSystemdUnit = name: settings:
+    nameValuePair "compose-${name}" {
+      path = attrValues {
+        inherit
+          (pkgs)
+          docker
+          ;
+      };
+
+      preStart = let
+        imageDerivations =
+          filter
+          (image: !(isString image))
+          (map (x: x.image) (attrValues settings.services));
+      in
+        optionalString (imageDerivations != []) (concatMapStringsSep "\n"
+          (image: "docker load -i ${toString image}")
+          imageDerivations);
+
+      serviceConfig = {
+        Restart = mkOverride 500 "always";
+        RestartMaxDelaySec = mkOverride 500 "1m";
+        RestartSec = mkOverride 500 "100ms";
+        RestartSteps = mkOverride 500 9;
+      };
+
+      after = ["docker.service" "docker.socket"];
+      requires = ["docker.service" "docker.socket"];
+      wantedBy = ["multi-user.target"];
+    };
 in {
   options.virtualisation.docker-compose = {
     enable = mkEnableOption ''
@@ -57,7 +99,9 @@ in {
     };
   };
 
-  config = mkIf (cfg.enable) {};
+  config = mkIf (cfg.enable) {
+    systemd.services = mapAttrs' mkSystemdUnit enabledCompositions;
+  };
 
   # For accurate stack trace
   _file = ./default.nix;
