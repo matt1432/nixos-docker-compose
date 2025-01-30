@@ -117,10 +117,22 @@ in {
           };
 
           services = mkOption {
-            type = types.attrsOf (types.submodule ({...}: {
+            type = types.attrsOf (types.submodule ({name, ...}: {
               freeformType = settingsFormat.type;
 
               options = {
+                container_name = mkOption {
+                  type = types.str;
+                  default = name;
+                  defaultText = "The name of the attribute set.";
+                };
+
+                hostname = mkOption {
+                  type = types.str;
+                  default = name;
+                  defaultText = "The name of the attribute set.";
+                };
+
                 image = mkOption {
                   type = with types; either str package;
                 };
