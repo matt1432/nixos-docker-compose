@@ -91,8 +91,8 @@ self: {
         RestartSteps = mkOverride 500 9;
       };
 
-      after = ["docker.service" "docker.socket"];
-      requires = ["docker.service" "docker.socket"];
+      after = ["docker.service" "docker.socket"] ++ settings.systemdDependencies;
+      requires = ["docker.service" "docker.socket"] ++ settings.systemdDependencies;
       wantedBy = ["multi-user.target"];
     };
 in {
@@ -110,6 +110,14 @@ in {
             type = types.bool;
             default = true;
             description = "Enables the systemd unit for ${name}.";
+          };
+
+          systemdDependencies = mkOption {
+            type = with types; listOf str;
+            default = [];
+            description = ''
+              A list of Systemd units that this composition needs before starting.
+            '';
           };
 
           services = mkOption {
