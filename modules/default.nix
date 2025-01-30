@@ -106,14 +106,14 @@ in {
 
     compositions = mkOption {
       type = types.attrsOf (types.submodule ({name, ...}: {
-        freeformType = types.yaml.type;
+        freeformType = settingsFormat.type;
 
         options = {
           enable = mkEnableOption "Enables the systemd unit for ${name}.";
 
           services = mkOption {
             type = types.attrsOf (types.submodule ({...}: {
-              freeformType = types.yaml.type;
+              freeformType = settingsFormat.type;
 
               options = {
                 image = mkOption {
