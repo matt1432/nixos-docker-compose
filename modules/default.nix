@@ -109,7 +109,11 @@ in {
         freeformType = settingsFormat.type;
 
         options = {
-          enable = mkEnableOption "Enables the systemd unit for ${name}.";
+          enable = mkOption {
+            type = types.bool;
+            default = true;
+            description = "Enables the systemd unit for ${name}.";
+          };
 
           services = mkOption {
             type = types.attrsOf (types.submodule ({...}: {
