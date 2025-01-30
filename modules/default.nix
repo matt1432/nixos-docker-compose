@@ -42,7 +42,20 @@ self: {
     (_: v: removeAttrs v ["enable"])
     (filterAttrs (_: v: v.enable) cfg.compositions);
 
-  mkSystemdUnit = name: settings:
+  mkSystemdUnit = name: settings: let
+    # FIXME: there has to be an easier way
+    composeFile = settingsFormat.generate "compose.yaml" (mapAttrs (n: v:
+      if n == "services"
+      then
+        mapAttrs (_: service:
+          mapAttrs (name: value:
+            if name == "image"
+            then getImageName value
+            else value))
+        v
+      else v)
+    settings);
+  in
     nameValuePair "compose-${name}" {
       path = attrValues {
         inherit
@@ -61,21 +74,17 @@ self: {
           (image: "docker load -i ${toString image}")
           imageDerivations);
 
-      script = let
-        # FIXME: there has to be an easier way
-        composeFile = settingsFormat.generate "compose.yaml" (mapAttrs (n: v:
-          if n == "services"
-          then
-            mapAttrs (_: service:
-              mapAttrs (name: value:
-                if name == "image"
-                then getImageName value
-                else value))
-            v
-          else v)
-        settings);
-      in ''
-        docker compose -f ${composeFile} -p ${name} up
+      script = ''
+        docker compose -f ${composeFile} -p ${name} up \
+            --remove-orphans \
+            --force-recreate \
+            --always-recreate-deps \
+            -y
+      '';
+
+      preStop = ''
+        docker compose -f ${composeFile} -p ${name} down \
+            --remove-orphans
       '';
 
       serviceConfig = {
