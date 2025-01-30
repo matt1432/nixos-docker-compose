@@ -51,7 +51,8 @@ self: {
           mapAttrs (name: value:
             if name == "image"
             then getImageName value
-            else value))
+            else value)
+          service)
         v
       else v)
     settings);
