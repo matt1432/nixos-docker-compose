@@ -95,7 +95,9 @@ self: {
       wantedBy = ["multi-user.target"];
     };
 in {
+  # TODO: figure out how to also accept camelCase options
   options.virtualisation.docker.compose = mkOption {
+    default = {};
     type = types.attrsOf (types.submodule ({name, ...}: {
       freeformType = settingsFormat.type;
 
