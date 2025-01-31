@@ -8,11 +8,10 @@ self: {
   inherit (lib.attrsets) attrNames attrValues filterAttrs mapAttrs mapAttrs' nameValuePair removeAttrs;
   inherit (lib.lists) elem filter;
   inherit (lib.modules) mkIf mkOverride;
-  inherit (lib.options) mkOption mkEnableOption;
+  inherit (lib.options) mkOption;
   inherit (lib.strings) concatMapStringsSep concatStringsSep isString optionalString;
 
-  cfg = config.virtualisation.docker-compose;
-  dockerCfg = config.virtualisation.docker;
+  cfg = config.virtualisation.docker;
 
   settingsFormat = pkgs.formats.yaml {};
 
@@ -41,7 +40,7 @@ self: {
   enabledCompositions =
     mapAttrs
     (_: v: removeAttrs v ["enable"])
-    (filterAttrs (_: v: v.enable) cfg.compositions);
+    (filterAttrs (_: v: v.enable) cfg.compose);
 
   mkSystemdUnit = name: settings: let
     # FIXME: there has to be an easier way
@@ -59,7 +58,7 @@ self: {
     (removeAttrs settings ["systemdDependencies"]));
   in
     nameValuePair "compose-${name}" {
-      path = [dockerCfg.package];
+      path = [cfg.package];
 
       preStart = let
         imageDerivations =
@@ -96,68 +95,53 @@ self: {
       wantedBy = ["multi-user.target"];
     };
 in {
-  options.virtualisation.docker-compose = {
-    enable = mkEnableOption ''
-      This option enables docker-compose declaration in nix code.
-    '';
+  options.virtualisation.docker.compose = mkOption {
+    type = types.attrsOf (types.submodule ({name, ...}: {
+      freeformType = settingsFormat.type;
 
-    compositions = mkOption {
-      type = types.attrsOf (types.submodule ({name, ...}: {
-        freeformType = settingsFormat.type;
-
-        options = {
-          enable = mkOption {
-            type = types.bool;
-            default = true;
-            description = "Enables the systemd unit for ${name}.";
-          };
-
-          systemdDependencies = mkOption {
-            type = with types; listOf str;
-            default = [];
-            description = ''
-              A list of Systemd units that this composition needs before starting.
-            '';
-          };
-
-          services = mkOption {
-            type = types.attrsOf (types.submodule ({name, ...}: {
-              freeformType = settingsFormat.type;
-
-              options = {
-                container_name = mkOption {
-                  type = types.str;
-                  default = name;
-                  defaultText = "The name of the attribute set.";
-                };
-
-                hostname = mkOption {
-                  type = types.str;
-                  default = name;
-                  defaultText = "The name of the attribute set.";
-                };
-
-                image = mkOption {
-                  type = with types; either str package;
-                };
-              };
-            }));
-          };
+      options = {
+        enable = mkOption {
+          type = types.bool;
+          default = true;
+          description = "Enables the systemd unit for ${name}.";
         };
-      }));
-    };
+
+        systemdDependencies = mkOption {
+          type = with types; listOf str;
+          default = [];
+          description = ''
+            A list of Systemd units that this composition needs before starting.
+          '';
+        };
+
+        services = mkOption {
+          type = types.attrsOf (types.submodule ({name, ...}: {
+            freeformType = settingsFormat.type;
+
+            options = {
+              container_name = mkOption {
+                type = types.str;
+                default = name;
+                defaultText = "The name of the attribute set.";
+              };
+
+              hostname = mkOption {
+                type = types.str;
+                default = name;
+                defaultText = "The name of the attribute set.";
+              };
+
+              image = mkOption {
+                type = with types; either str package;
+              };
+            };
+          }));
+        };
+      };
+    }));
   };
 
   config = mkIf (cfg.enable) {
-    assertions = [
-      {
-        assertion = dockerCfg.enable;
-        message = ''
-          Docker needs to be enabled to use docker-compose.
-        '';
-      }
-    ];
-
     systemd.services = mapAttrs' mkSystemdUnit enabledCompositions;
   };
 
