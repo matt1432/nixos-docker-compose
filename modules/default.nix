@@ -91,7 +91,7 @@ in {
     systemd.services = let
       mkComposeSystemdUnit = name: settings: let
         # Get rid of options that we don't want in the compose.yaml file
-        filteredSettings = removeAttrs settings ["enable" "containerName" "systemdDependencies"];
+        filteredSettings = removeAttrs settings ["enable" "systemdDependencies"];
 
         # Transform all known compose option names from camelCase to snake_case
         composeSettings = attrsToSnakeCase filteredSettings;
@@ -104,7 +104,7 @@ in {
               {
                 image = getImageName;
               }
-              service);
+              (removeAttrs service ["containerName"]));
           }
           composeSettings;
 
