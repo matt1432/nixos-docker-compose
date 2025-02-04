@@ -5,7 +5,7 @@ self: {
   ...
 }: let
   inherit (lib) types;
-  inherit (lib.attrsets) attrNames attrValues filterAttrs mapAttrs mapAttrs' nameValuePair removeAttrs;
+  inherit (lib.attrsets) attrNames attrValues filterAttrs hasAttr mapAttrs mapAttrs' nameValuePair removeAttrs;
   inherit (lib.lists) elem filter;
   inherit (lib.modules) mkIf mkOverride;
   inherit (lib.options) mkOption;
@@ -37,34 +37,44 @@ self: {
     then image
     else getImageNameFromDerivation image;
 
-  enabledCompositions =
-    mapAttrs
-    (_: v: removeAttrs v ["enable"])
-    (filterAttrs (_: v: v.enable) cfg.compose);
-
-  mkSystemdUnit = name: settings: let
-    # FIXME: there has to be an easier way
-    composeFile = settingsFormat.generate "compose.yaml" (mapAttrs (n: v:
-      if n == "services"
-      then
-        mapAttrs (_: service:
-          mapAttrs (name: value:
-            if name == "image"
-            then getImageName value
-            else value)
-          service)
-        v
+  /*
+  * modifications: an attribute set of attribute names and a function to apply on that attribute.
+  * attrs:         an attribute set on which we will apply the functions from `mods`.
+  *
+  * returns `attrs` with the functions of `mods` applied to it.
+  */
+  modifyAttrs = modifications: attrs:
+    mapAttrs (n: v:
+      if hasAttr n modifications
+      then modifications.${n} v
       else v)
-    (removeAttrs settings ["systemdDependencies"]));
+    attrs;
+
+  mkComposeSystemdUnit = name: settings: let
+    # Get rid of options that we don't want in the compose.yaml file
+    composeSettings = removeAttrs settings ["enable" "systemdDependencies"];
+
+    modifiedSettings =
+      modifyAttrs
+      {
+        services = mapAttrs (_: service:
+          modifyAttrs
+          {
+            image = getImageName;
+          }
+          service);
+      }
+      composeSettings;
+
+    composeFile = settingsFormat.generate "compose.yaml" modifiedSettings;
   in
-    nameValuePair "compose-${name}" {
+    nameValuePair "compose-${name}" rec {
       path = [cfg.package];
 
       preStart = let
-        imageDerivations =
-          filter
-          (image: !(isString image))
-          (map (x: x.image) (attrValues settings.services));
+        services = attrValues composeSettings.services;
+        images = map (x: x.image) services;
+        imageDerivations = filter (image: !(isString image)) images;
       in
         optionalString (imageDerivations != []) (concatMapStringsSep "\n"
           (image: "docker load -i ${toString image}")
@@ -79,8 +89,7 @@ self: {
       '';
 
       preStop = ''
-        docker compose -f ${composeFile} -p ${name} down \
-            --remove-orphans
+        docker compose -f ${composeFile} -p ${name} down --remove-orphans
       '';
 
       serviceConfig = {
@@ -91,7 +100,7 @@ self: {
       };
 
       after = ["docker.service" "docker.socket"] ++ settings.systemdDependencies;
-      requires = ["docker.service" "docker.socket"] ++ settings.systemdDependencies;
+      requires = after;
       wantedBy = ["multi-user.target"];
     };
 in {
@@ -144,7 +153,7 @@ in {
   };
 
   config = mkIf (cfg.enable) {
-    systemd.services = mapAttrs' mkSystemdUnit enabledCompositions;
+    systemd.services = mapAttrs' mkComposeSystemdUnit (filterAttrs (_: v: v.enable) cfg.compose);
   };
 
   # For accurate stack trace
