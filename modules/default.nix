@@ -93,7 +93,7 @@ in {
         # Get rid of options that we don't want in the compose.yaml file
         filteredSettings = removeAttrs settings ["enable" "containerName" "systemdDependencies"];
 
-        # Transform all camelCase attributes to snake_case
+        # Transform all known compose option names from camelCase to snake_case
         composeSettings = attrsToSnakeCase filteredSettings;
 
         modifiedSettings =
