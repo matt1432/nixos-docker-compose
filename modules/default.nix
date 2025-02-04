@@ -5,129 +5,17 @@ self: {
   ...
 }: let
   inherit (lib) types;
-  inherit (lib.attrsets) attrNames attrValues filterAttrs hasAttr isAttrs isDerivation mapAttrs mapAttrs' nameValuePair removeAttrs;
-  inherit (lib.lists) elem elemAt filter;
-  inherit (lib.modules) mkIf mkOverride;
+  inherit (lib.lists) filter;
   inherit (lib.options) mkOption;
-  inherit (lib.strings) concatMapStringsSep concatStringsSep isString optionalString split toLower;
+  inherit (lib.modules) mkIf mkOverride;
+  inherit (lib.strings) concatMapStringsSep isString optionalString;
+  inherit (lib.attrsets) attrValues filterAttrs mapAttrs mapAttrs' nameValuePair removeAttrs;
 
-  # From Nixvim
-  toSnakeCase = let
-    splitByWords = split "([A-Z])";
-    processWord = s:
-      if isString s
-      then s
-      else "_" + toLower (elemAt s 0);
-  in
-    string: let
-      words = splitByWords string;
-    in
-      lib.concatStrings (map processWord words);
-
-  attrsToSnakeCase = attrs:
-    mapAttrs' (n: v:
-      nameValuePair (toSnakeCase n) (
-        if isAttrs v && ! isDerivation v
-        then attrsToSnakeCase v
-        else v
-      ))
-    attrs;
+  inherit (import ./lib.nix lib) attrsToSnakeCase getImageName modifyAttrs;
 
   cfg = config.virtualisation.docker;
 
   settingsFormat = pkgs.formats.yaml {};
-
-  getImageNameFromDerivation = drv: let
-    attrNamesOf = attrNames drv;
-  in
-    if elem "destNameTag" attrNamesOf
-    then
-      # image coming from dockerTools.pullImage
-      drv.destNameTag
-    else
-      # image coming from dockerTools.buildImage
-      if elem "imageName" attrNamesOf && elem "imageTag" attrNamesOf
-      then "${drv.imageName}:${drv.imageTag}"
-      else
-        throw
-        "Image '${drv}' is missing the attribute 'destNameTag'. Available attributes: ${
-          concatStringsSep "," attrNamesOf
-        }";
-
-  getImageName = image:
-    if isString image
-    then image
-    else getImageNameFromDerivation image;
-
-  /*
-  * modifications: an attribute set of attribute names and a function to apply on that attribute.
-  * attrs:         an attribute set on which we will apply the functions from `mods`.
-  *
-  * returns `attrs` with the functions of `mods` applied to it.
-  */
-  modifyAttrs = modifications: attrs:
-    mapAttrs (n: v:
-      if hasAttr n modifications
-      then modifications.${n} v
-      else v)
-    attrs;
-
-  mkComposeSystemdUnit = name: settings: let
-    # Get rid of options that we don't want in the compose.yaml file
-    filteredSettings = removeAttrs settings ["enable" "containerName" "systemdDependencies"];
-
-    # Transform all camelCase attributes to snake_case
-    composeSettings = attrsToSnakeCase filteredSettings;
-
-    modifiedSettings =
-      modifyAttrs
-      {
-        services = mapAttrs (_: service:
-          modifyAttrs
-          {
-            image = getImageName;
-          }
-          service);
-      }
-      composeSettings;
-
-    composeFile = settingsFormat.generate "compose.yaml" modifiedSettings;
-  in
-    nameValuePair "compose-${name}" rec {
-      path = [cfg.package];
-
-      preStart = let
-        services = attrValues composeSettings.services;
-        images = map (x: x.image) services;
-        imageDerivations = filter (image: !(isString image)) images;
-      in
-        optionalString (imageDerivations != []) (concatMapStringsSep "\n"
-          (image: "docker load -i ${toString image}")
-          imageDerivations);
-
-      script = ''
-        docker compose -f ${composeFile} -p ${name} up \
-            --remove-orphans \
-            --force-recreate \
-            --always-recreate-deps \
-            -y
-      '';
-
-      preStop = ''
-        docker compose -f ${composeFile} -p ${name} down --remove-orphans
-      '';
-
-      serviceConfig = {
-        Restart = mkOverride 500 "always";
-        RestartMaxDelaySec = mkOverride 500 "1m";
-        RestartSec = mkOverride 500 "100ms";
-        RestartSteps = mkOverride 500 9;
-      };
-
-      after = ["docker.service" "docker.socket"] ++ settings.systemdDependencies;
-      requires = after;
-      wantedBy = ["multi-user.target"];
-    };
 in {
   options.virtualisation.docker.compose = mkOption {
     default = {};
@@ -162,7 +50,10 @@ in {
                 type = types.str;
                 default = name;
                 defaultText = ''
-                  The name of the attribute set. Only this or container_name need to be set.
+                  The name of the attribute set.
+                '';
+                description = ''
+                  Only this or container_name need to be set.
                 '';
               };
 
@@ -170,7 +61,10 @@ in {
                 type = types.str;
                 default = config.containerName;
                 defaultText = ''
-                  The name of the attribute set. Only this or container_name need to be set.
+                  The name of the attribute set.
+                '';
+                description = ''
+                  Only this or containerName need to be set.
                 '';
               };
 
@@ -194,7 +88,65 @@ in {
   };
 
   config = mkIf (cfg.enable) {
-    systemd.services = mapAttrs' mkComposeSystemdUnit (filterAttrs (_: v: v.enable) cfg.compose);
+    systemd.services = let
+      mkComposeSystemdUnit = name: settings: let
+        # Get rid of options that we don't want in the compose.yaml file
+        filteredSettings = removeAttrs settings ["enable" "containerName" "systemdDependencies"];
+
+        # Transform all camelCase attributes to snake_case
+        composeSettings = attrsToSnakeCase filteredSettings;
+
+        modifiedSettings =
+          modifyAttrs
+          {
+            services = mapAttrs (_: service:
+              modifyAttrs
+              {
+                image = getImageName;
+              }
+              service);
+          }
+          composeSettings;
+
+        composeFile = settingsFormat.generate "compose.yaml" modifiedSettings;
+      in
+        nameValuePair "compose-${name}" rec {
+          path = [cfg.package];
+
+          preStart = let
+            services = attrValues composeSettings.services;
+            images = map (x: x.image) services;
+            imageDerivations = filter (image: !(isString image)) images;
+          in
+            optionalString (imageDerivations != []) (concatMapStringsSep "\n"
+              (image: "docker load -i ${toString image}")
+              imageDerivations);
+
+          script = ''
+            docker compose -f ${composeFile} -p ${name} up \
+                --remove-orphans \
+                --force-recreate \
+                --always-recreate-deps \
+                -y
+          '';
+
+          preStop = ''
+            docker compose -f ${composeFile} -p ${name} down --remove-orphans
+          '';
+
+          serviceConfig = {
+            Restart = mkOverride 500 "always";
+            RestartMaxDelaySec = mkOverride 500 "1m";
+            RestartSec = mkOverride 500 "100ms";
+            RestartSteps = mkOverride 500 9;
+          };
+
+          after = ["docker.service" "docker.socket"] ++ settings.systemdDependencies;
+          requires = after;
+          wantedBy = ["multi-user.target"];
+        };
+    in
+      mapAttrs' mkComposeSystemdUnit (filterAttrs (_: v: v.enable) cfg.compose);
   };
 
   # For accurate stack trace
