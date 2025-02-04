@@ -5,11 +5,33 @@ self: {
   ...
 }: let
   inherit (lib) types;
-  inherit (lib.attrsets) attrNames attrValues filterAttrs hasAttr mapAttrs mapAttrs' nameValuePair removeAttrs;
-  inherit (lib.lists) elem filter;
+  inherit (lib.attrsets) attrNames attrValues filterAttrs hasAttr isAttrs isDerivation mapAttrs mapAttrs' nameValuePair removeAttrs;
+  inherit (lib.lists) elem elemAt filter;
   inherit (lib.modules) mkIf mkOverride;
   inherit (lib.options) mkOption;
-  inherit (lib.strings) concatMapStringsSep concatStringsSep isString optionalString;
+  inherit (lib.strings) concatMapStringsSep concatStringsSep isString optionalString split toLower;
+
+  # From Nixvim
+  toSnakeCase = let
+    splitByWords = split "([A-Z])";
+    processWord = s:
+      if isString s
+      then s
+      else "_" + toLower (elemAt s 0);
+  in
+    string: let
+      words = splitByWords string;
+    in
+      lib.concatStrings (map processWord words);
+
+  attrsToSnakeCase = attrs:
+    mapAttrs' (n: v:
+      nameValuePair (toSnakeCase n) (
+        if isAttrs v && ! isDerivation v
+        then attrsToSnakeCase v
+        else v
+      ))
+    attrs;
 
   cfg = config.virtualisation.docker;
 
@@ -52,7 +74,10 @@ self: {
 
   mkComposeSystemdUnit = name: settings: let
     # Get rid of options that we don't want in the compose.yaml file
-    composeSettings = removeAttrs settings ["enable" "systemdDependencies"];
+    filteredSettings = removeAttrs settings ["enable" "containerName" "systemdDependencies"];
+
+    # Transform all camelCase attributes to snake_case
+    composeSettings = attrsToSnakeCase filteredSettings;
 
     modifiedSettings =
       modifyAttrs
@@ -104,7 +129,6 @@ self: {
       wantedBy = ["multi-user.target"];
     };
 in {
-  # TODO: figure out how to also accept camelCase options
   options.virtualisation.docker.compose = mkOption {
     default = {};
     type = types.attrsOf (types.submodule ({name, ...}: {
@@ -126,19 +150,36 @@ in {
         };
 
         services = mkOption {
-          type = types.attrsOf (types.submodule ({name, ...}: {
+          type = types.attrsOf (types.submodule ({
+            config,
+            name,
+            ...
+          }: {
             freeformType = settingsFormat.type;
 
             options = {
-              container_name = mkOption {
+              containerName = mkOption {
                 type = types.str;
                 default = name;
-                defaultText = "The name of the attribute set.";
+                defaultText = ''
+                  The name of the attribute set. Only this or container_name need to be set.
+                '';
+              };
+
+              container_name = mkOption {
+                type = types.str;
+                default = config.containerName;
+                defaultText = ''
+                  The name of the attribute set. Only this or container_name need to be set.
+                '';
               };
 
               hostname = mkOption {
                 type = types.str;
-                default = name;
+                default =
+                  if config.containerName != name
+                  then config.containerName
+                  else config.container_name;
                 defaultText = "The name of the attribute set.";
               };
 
