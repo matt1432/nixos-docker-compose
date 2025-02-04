@@ -8,8 +8,21 @@ self: {
   inherit (lib.lists) filter;
   inherit (lib.options) mkOption;
   inherit (lib.modules) mkIf mkOverride;
-  inherit (lib.strings) concatMapStringsSep isString optionalString;
-  inherit (lib.attrsets) attrValues filterAttrs mapAttrs mapAttrs' nameValuePair removeAttrs;
+  inherit
+    (lib.strings)
+    concatMapStringsSep
+    isString
+    optionalString
+    ;
+  inherit
+    (lib.attrsets)
+    attrValues
+    filterAttrs
+    mapAttrs
+    mapAttrs'
+    nameValuePair
+    removeAttrs
+    ;
 
   inherit (import ./lib.nix lib) attrsToSnakeCase getImageName modifyAttrs;
 
