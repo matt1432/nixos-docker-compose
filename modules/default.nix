@@ -121,7 +121,7 @@ in {
           }
           composeSettings;
 
-        composeFile = settingsFormat.generate "compose.yaml" modifiedSettings;
+        composeFile = settingsFormat.generate "compose-${name}.yaml" modifiedSettings;
       in
         nameValuePair "compose-${name}" rec {
           path = [cfg.package];
