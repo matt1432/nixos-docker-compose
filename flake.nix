@@ -1,34 +1,10 @@
 {
-  inputs = {
-    nixpkgs = {
-      type = "github";
-      owner = "NixOS";
-      repo = "nixpkgs";
-      ref = "nixos-unstable";
-    };
+  inputs = {};
 
-    systems = {
-      type = "github";
-      owner = "nix-systems";
-      repo = "default-linux";
-    };
-  };
-
-  outputs = {
-    self,
-    systems,
-    nixpkgs,
-    ...
-  }: let
-    perSystem = attrs:
-      nixpkgs.lib.genAttrs (import systems) (system:
-        attrs (import nixpkgs {inherit system;}));
-  in {
+  outputs = {self, ...}: {
     nixosModules = {
-      docker-compose = import ./modules self;
+      docker-compose = import ./modules;
       default = self.nixosModules.docker-compose;
     };
-
-    formatter = perSystem (pkgs: pkgs.alejandra);
   };
 }

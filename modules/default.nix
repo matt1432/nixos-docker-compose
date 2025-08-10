@@ -1,4 +1,4 @@
-self: {
+{
   config,
   lib,
   pkgs,
@@ -161,7 +161,4 @@ in {
     in
       mapAttrs' mkComposeSystemdUnit (filterAttrs (_: v: v.enable) cfg.compose);
   };
-
-  # For accurate stack trace
-  _file = ./default.nix;
 }
