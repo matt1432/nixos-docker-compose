@@ -21,7 +21,6 @@
     mapAttrs
     mapAttrs'
     nameValuePair
-    removeAttrs
     ;
 
   inherit (import ./lib.nix lib) attrsToSnakeCase getImageName modifyAttrs;
@@ -82,7 +81,7 @@ in {
               };
 
               hostname = mkOption {
-                type = types.str;
+                type = types.nullOr types.str;
                 default =
                   if config.containerName != name
                   then config.containerName
@@ -117,7 +116,7 @@ in {
               {
                 image = getImageName;
               }
-              (removeAttrs service ["containerName"]));
+              (filterAttrs (n: v: v != null) (removeAttrs service ["containerName"])));
           }
           composeSettings;
 
